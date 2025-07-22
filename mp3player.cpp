@@ -13,8 +13,6 @@
 #include <taglib/tag.h>
 #include <cxxopts.hpp>
 
-using namespace std;
-
 #define BUFFER_SIZE 8192
 
 // Termios Setup für nicht-blockierendes Lesen der Tastatur
@@ -43,7 +41,7 @@ void printTAG(const char *filename) {
     if (!f.isNull() && f.tag()) {
         TagLib::Tag *tag = f.tag();
         std::cout << "=================================================\n";
-        std::cout << "MP3 Datei: " << filename << endl;
+        std::cout << "MP3 Datei: " << filename << std::endl;
         std::cout << "Titel:   " << tag->title() << std::endl;
         std::cout << "Kuenstler:" << tag->artist() << std::endl;
         std::cout << "Album:   " << tag->album() << std::endl;
@@ -72,9 +70,9 @@ bool is_playback_finished(snd_pcm_t* pcm_handle) {
         std::cerr << "snd_pcm_delay fehlgeschlagen\n";
         return false;
     }
-    cout<<"  delay " << delay<<"  "<<flush;
+    std::cout<<"  delay " << delay<<"  "<<std::flush;
     if(delay<1024) {
-        cout<<" delayed end ....\n";
+        std::cout<<" delayed end ....\n";
         return true;
     } else
         return false;
@@ -160,19 +158,19 @@ int main(int argc, char *argv[]) {
 
     // mpg123 initialisieren
     if (mpg123_init() != MPG123_OK) {
-        cerr << "Failed to initialize mpg123" << endl;
+        std::cerr << "Failed to initialize mpg123" << std::endl;
         return 1;
     }
 
     mpg123_handle *mh = mpg123_new(nullptr, nullptr);
     if (!mh) {
-        cerr << "Failed to create mpg123 handle" << endl;
+        std::cerr << "Failed to create mpg123 handle" << std::endl;
         mpg123_exit();
         return 1;
     }
 
     if (mpg123_open(mh, filename) != MPG123_OK) {
-        cerr << "Failed to open file: " << filename << endl;
+        std::cerr << "Failed to open file: " << filename << std::endl;
         mpg123_delete(mh);
         mpg123_exit();
         return 1;
@@ -181,21 +179,21 @@ int main(int argc, char *argv[]) {
     long rate;
     int channels, encoding;
     if (mpg123_getformat(mh, &rate, &channels, &encoding) != MPG123_OK) {
-        cerr << "Failed to get format from file" << endl;
+        std::cerr << "Failed to get format from file" << std::endl;
         mpg123_close(mh);
         mpg123_delete(mh);
         mpg123_exit();
         return 1;
     }
 
-    cout << "Sample rate: " << rate << " Hz" << endl;
-    cout << "Kanaele: " << channels << endl;
+    std::cout << "Sample rate: " << rate << " Hz" << std::endl;
+    std::cout << "Kanaele: " << channels << std::endl;
 
     // ALSA initialisieren
     snd_pcm_t *pcm_handle;
     snd_pcm_hw_params_t *params;
     if (snd_pcm_open(&pcm_handle, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
-        cerr << "Fehler beim Öffnen des ALSA-Geräts" << endl;
+        std::cerr << "Fehler beim Öffnen des ALSA-Geräts" << std::endl;
         mpg123_close(mh);
         mpg123_delete(mh);
         mpg123_exit();
@@ -210,7 +208,7 @@ int main(int argc, char *argv[]) {
     if (encoding == MPG123_ENC_SIGNED_16) {
         format = SND_PCM_FORMAT_S16_LE;
     } else {
-        cerr << "Nicht unterstuetztes Encoding" << endl;
+        std::cerr << "Nicht unterstuetztes Encoding" << std::endl;
         mpg123_close(mh);
         mpg123_delete(mh);
         mpg123_exit();
@@ -234,48 +232,48 @@ int main(int argc, char *argv[]) {
     off_t total_samples = mpg123_length(mh);
     off_t current_sample = first_sampe_offset;
 
-    atomic<bool> running(true);
-    atomic<bool> paused(false);
-    atomic<bool> restart(false);
-    atomic<bool> alsa_paused(false);
-    atomic<bool> forward_set(false);
-    atomic<bool> backward_set(false);
-    atomic<int> zeitgeber(0);
+    std::atomic<bool> running(true);
+    std::atomic<bool> paused(false);
+    std::atomic<bool> restart(false);
+    std::atomic<bool> alsa_paused(false);
+    std::atomic<bool> forward_set(false);
+    std::atomic<bool> backward_set(false);
+    std::atomic<int> zeitgeber(0);
 
     // Thread für Tastatureingaben
-    thread inputThread([&]{
+    std::thread inputThread([&]{
         setNonBlocking(true);
-        cout << "\nSteuerung: p = Pause/Play, s = StartZero, f = Vorlauf 5s, r = Rücklauf 5s, q = Quit\n";
+        std::cout << "\nSteuerung: p = Pause/Play, s = StartZero, f = Vorlauf 5s, r = Rücklauf 5s, q = Quit\n";
         while (running) {
             int c = getchar();
             if (c == EOF) {
-                this_thread::sleep_for(chrono::milliseconds(100));
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 continue;
             }
             c = tolower(c);
             if (c == 'p') {
                 paused = !paused;
-                cout << (paused ? "\nPause\n" : "\nPlay\n");
+                std::cout << (paused ? "\nPause\n" : "\nPlay\n");
             } else if (c == 's') {
                 restart = true;
-                cout << "\nBegining from Zero\n";
+                std::cout << "\nBegining from Zero\n";
             } else if (c == 'f') {
                 if(!backward_set) forward_set = true;
             } else if (c == 'r') {
                 if(!forward_set) backward_set = true;
             } else if (c == 'q') {
                 running = false;
-                cout << "\nBeenden\n";
+                std::cout << "\nBeenden\n";
             }
         }
         setNonBlocking(false);
     });
 
-    thread timerThread([&]{
+    std::thread timerThread([&]{
         while(running) {
             if(!paused)
                 zeitgeber++;
-            this_thread::sleep_for(chrono::milliseconds(1000));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
     });
 
@@ -286,7 +284,7 @@ int main(int argc, char *argv[]) {
                 snd_pcm_pause(pcm_handle, 1);  // ALSA pausieren
                 alsa_paused = true;
             }
-            this_thread::sleep_for(chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         } else if (alsa_paused) {
             snd_pcm_pause(pcm_handle, 0);  // ALSA fortsetzen
@@ -298,19 +296,19 @@ int main(int argc, char *argv[]) {
             if (newpos > total_samples) newpos = total_samples;
             seekAndReset(mh, pcm_handle, newpos);
             current_sample = newpos;
-            cout << "\nVorlauf 5s\n";
+            std::cout << "\nVorlauf 5s\n";
             if(zeitgeber<(total_samples/rate))  zeitgeber += 5;
             forward_set = false;
         }
         if(backward_set) { 
             off_t newpos = current_sample - rate * 5; // 6 Sekunden zurück
-            cout<<endl<<"cur: "<<current_sample<<"  ";
+            std::cout<<std::endl<<"cur: "<<current_sample<<"  ";
             if (newpos < 0) newpos = first_sampe_offset;
-            cout<<"new: "<<newpos;
+            std::cout<<"new: "<<newpos;
             seekAndReset(mh, pcm_handle, newpos);
             current_sample = newpos;
-            cout<<"  cur: "<<current_sample<<"  ";
-            cout << "         Ruecklauf 5s\n";
+            std::cout<<"  cur: "<<current_sample<<"  ";
+            std::cout << "         Ruecklauf 5s\n";
             if(zeitgeber>=5) 
                 zeitgeber -=5;
             else
@@ -320,7 +318,7 @@ int main(int argc, char *argv[]) {
         if(restart) {
             current_sample = first_sampe_offset;
             seekAndReset(mh, pcm_handle, current_sample);
-            cout<<"reset to "<<current_sample<<endl;
+            std::cout<<"reset to "<<current_sample<<std::endl;
             zeitgeber = 0;
             restart = false;
         }
@@ -331,7 +329,7 @@ int main(int argc, char *argv[]) {
             if(is_playback_finished(pcm_handle))
                 break; // Ende der Datei
         } else if (err != MPG123_OK) {
-            cerr << "mpg123_read error: " << mpg123_strerror(mh) << endl;
+            std::cerr << "mpg123_read error: " << mpg123_strerror(mh) << std::endl;
             break;
         }
 
@@ -341,7 +339,7 @@ int main(int argc, char *argv[]) {
         if (err2 == -EPIPE) {
             snd_pcm_prepare(pcm_handle);
         } else if (err2 < 0) {
-            cerr << "ALSA write error: " << snd_strerror(err2) << endl;
+            std::cerr << "ALSA write error: " << snd_strerror(err2) << std::endl;
             break;
         }
 
@@ -350,15 +348,15 @@ int main(int argc, char *argv[]) {
         int cur_sec = zeitgeber;
         
 
-        cout << "\rFortschritt: " << current_sample<<" "
+        std::cout << "\rFortschritt: " << current_sample<<" "
              << (cur_sec / 60) << ":" << (cur_sec % 60 < 10 ? "0" : "") 
              << (cur_sec % 60)
              << " / " << (total_sec / 60) << ":" << (total_sec % 60 < 10 ? "0" : "") 
              << (total_sec % 60) << "  "
-             << flush;
+             << std::flush;
 
         current_sample += frames;
-        this_thread::sleep_for(chrono::milliseconds(20));
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
     snd_pcm_drop(pcm_handle);
@@ -368,7 +366,7 @@ int main(int argc, char *argv[]) {
     inputThread.join();
     timerThread.join();
 
-    cout << endl << "Wiedergabe beendet." << endl;
+    std::cout << std::endl << "Wiedergabe beendet." << std::endl;
 
     snd_pcm_drain(pcm_handle);
     snd_pcm_close(pcm_handle);
