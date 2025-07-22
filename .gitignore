@@ -1,3 +1,5 @@
+.vscode
+*.mp4
 *.mp3
 getmp3info
 mp3player

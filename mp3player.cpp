@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
+#include <cxxopts.hpp>
 
 using namespace std;
 
@@ -41,7 +42,8 @@ void printTAG(const char *filename) {
     TagLib::FileRef f(filename);
     if (!f.isNull() && f.tag()) {
         TagLib::Tag *tag = f.tag();
-        cout << "MP3 Datei: " << filename << endl;
+        std::cout << "=================================================\n";
+        std::cout << "MP3 Datei: " << filename << endl;
         std::cout << "Titel:   " << tag->title() << std::endl;
         std::cout << "Kuenstler:" << tag->artist() << std::endl;
         std::cout << "Album:   " << tag->album() << std::endl;
@@ -78,16 +80,83 @@ bool is_playback_finished(snd_pcm_t* pcm_handle) {
         return false;
 }
 
+// Hilfsfunktion zur Prüfung der Dateiendung
+bool has_valid_extension(const std::string& filename) {
+    auto pos = filename.rfind('.');
+    if (pos == std::string::npos) return false;
+    std::string ext = filename.substr(pos);
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    return (ext == ".mp3" || ext == ".mp4");
+}
+
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        cerr << "Usage: " << argv[0] << " <mp3-file>" << endl;
+    cxxopts::Options options("mp3player", "play mp3 or mp4 files audio");
+
+    options.add_options()
+        ("f,from",   "Startzeit (default 0, begin)",   cxxopts::value<int>()->default_value("0"))
+        ("t,to",     "Endzeit (default 0, end)",     cxxopts::value<int>()->default_value("0"))
+        ("n,number", "Anzahl Durchläufe ", cxxopts::value<int>()->default_value("1"))
+        ("x,velocity", "Geschwindigkeit erhöhen/erniedriegen ", cxxopts::value<float>()->default_value("1.0"))
+        ("p,print", "Print Infos/Tags", cxxopts::value<bool>()->default_value("false"))
+        ("h,help",   "Zeige diese Hilfe an")
+        // positional argument "files"
+        ("files",    "Eingabedateien (.mp3 oder .mp4)", cxxopts::value<std::vector<std::string>>());
+
+    options.parse_positional({"files"});
+    options.positional_help("d1.mp3 [d2.mp3 ... dN.mp4]");
+
+    auto result = options.parse(argc, argv);
+
+    if (result.count("help")) {
+        std::cout << options.help({""}) << "\n";
+        return 0;
+    }
+
+    // eine datei soll angebeben werden
+    if (!result.count("files")) {
+        std::cerr << "Fehler: Keine Eingabedateien angegeben.\n"
+                    << "Aufruf: app [Optionen] d1.mp3 [d2.mp3 ... dN.mp4]\n";
         return 1;
     }
 
-    const char* filename = argv[1];
+    auto files = result["files"].as<std::vector<std::string>>();
+    // Prüfung der Dateiendungen
+    for (const auto& f : files) {
+        if (!has_valid_extension(f)) {
+            std::cerr << "Ungültige Dateiendung bei \"" << f << "\". "
+                        << "Erlaubt sind nur .mp3 und .mp4\n";
+            return 1;
+        }
+    }
 
-    printTAG(filename);
+    // Auslesen der weiteren Parameter
+    int from   = result["from"].as<int>();
+    int to     = result["to"].as<int>();
+    int number = result["number"].as<int>();
+    float faster = result["velocity"].as<float>();
+    bool print_on = result["print"].as<bool>();
+
+    // Debug-Ausgabe der eingelesenen Werte
+    std::cout << "Dateien:\n";
+    for (const auto& f : files) {
+        std::cout << "  - " << f << "\n";
+    }
+    std::string from_s = from<1?"begin":std::to_string(from);
+    std::string to_s  = to<1?"end":std::to_string(to);
+    std::cout << "Parameter:\n"
+              << "  from   = " << from_s << "\n"
+              << "  to     = " << to_s   << "\n"
+              << "  number = " << number << "\n"
+              << "  faster = " << faster << " x\n";
+
     
+
+    const char* filename = files[0].c_str();
+
+    if(print_on){
+        for(auto filename : files)
+            printTAG(filename.c_str());
+    }
 
     // mpg123 initialisieren
     if (mpg123_init() != MPG123_OK) {
