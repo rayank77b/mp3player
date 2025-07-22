@@ -1,17 +1,26 @@
-CXX = g++-14
-CXXFLAGS = -Wall -O2  -pthread
-LIBS = -lmpg123 -lasound -ltag
+# Compiler and flags
+CXX       = g++-14
+CXXFLAGS  = -Wall -O2 -pthread
+LDFLAGS   = -lmpg123 -lasound -ltag
 
-all: mp3player getmp3info
+# Source files and target
+SRC       = helper.cpp MP3wrapper.cpp main.cpp
+OBJ       = $(SRC:.cpp=.o)
+TARGET    = mp3player
 
-mp3player: mp3player.cpp
-	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
+.PHONY: all clean
 
-mp3player_control: mp3player_control.cpp
-	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
+# Default target
+all: $(TARGET)
 
-getmp3info: getmp3info.cpp
-	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
+# Link object files into the final binary
+$(TARGET): $(OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
+# Compile .cpp files to .o
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# Remove build artifacts
 clean:
-	rm -f mp3player mp3player_control
+	rm -f $(OBJ) $(TARGET)
