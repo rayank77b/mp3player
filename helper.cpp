@@ -13,6 +13,10 @@
 #include <taglib/tag.h>
 #include "helper.hpp"
 
+void printColor(std::string message, const char *c) {
+    std::cout << std::endl << c   << message << RESET << std::endl;
+}
+
 // Termios Setup für nicht-blockierendes Lesen der Tastatur
 void setNonBlocking(bool enable) {
     static struct termios oldt, newt;

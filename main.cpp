@@ -61,6 +61,10 @@ int main(int argc, char *argv[]) {
     float faster = result["velocity"].as<float>();
     bool print_on = result["print"].as<bool>();
 
+    if(from<0)  from = 0;
+    if(to<0) to = 0;
+    if(from>to) to = from + 10;    // falls falscheingaben, mehr als 10 Sek abspielen
+    
     // Debug-Ausgabe der eingelesenen Werte
     std::cout << "Dateien:\n";
     for (const auto& f : files) {
@@ -111,6 +115,7 @@ int main(int argc, char *argv[]) {
     mp3.scan();
     off_t first_sampe_offset = mp3.getFirstOffset();
     off_t total_samples = mp3.length();
+    if(first_sampe_offset<from*mp3.getRate()) first_sampe_offset = from*mp3.getRate();
     off_t current_sample = first_sampe_offset;
 
     std::atomic<bool> running(true);
@@ -120,6 +125,10 @@ int main(int argc, char *argv[]) {
     std::atomic<bool> forward_set(false);
     std::atomic<bool> backward_set(false);
     std::atomic<int> zeitgeber(0);
+
+    zeitgeber = from;
+    std::cout<<current_sample<<std::endl;
+    mp3.seekAndReset( snd.getPCM(), current_sample);
 
     // Thread für Tastatureingaben
     std::thread inputThread([&]{
@@ -134,17 +143,20 @@ int main(int argc, char *argv[]) {
             c = tolower(c);
             if (c == 'p') {
                 paused = !paused;
-                std::cout << (paused ? "\nPause\n" : "\nPlay\n");
+                if(paused)
+                    printColor("Pause", RED);
+                else
+                    printColor("Play", GREEN);
             } else if (c == 's') {
                 restart = true;
-                std::cout << "\nBegining from Zero\n";
+                printColor("Begining from Zero", RED);
             } else if (c == 'f') {
                 if(!backward_set) forward_set = true;
             } else if (c == 'r') {
                 if(!forward_set) backward_set = true;
             } else if (c == 'q') {
                 running = false;
-                std::cout << "\nBeenden\n";
+                printColor("Beenden", YELLOW );
             }
         }
         setNonBlocking(false);
@@ -177,7 +189,7 @@ int main(int argc, char *argv[]) {
             if (newpos > total_samples) newpos = total_samples;
             mp3.seekAndReset( snd.getPCM(), newpos);
             current_sample = newpos;
-            std::cout << "\nVorlauf 5s\n";
+            printColor("Vorlauf 5s", YELLOW);
             if(zeitgeber<(total_samples/mp3.getRate()))  zeitgeber += 5;
             forward_set = false;
         }
@@ -188,8 +200,7 @@ int main(int argc, char *argv[]) {
             std::cout<<"new: "<<newpos;
             mp3.seekAndReset(snd.getPCM(), newpos);
             current_sample = newpos;
-            std::cout<<"  cur: "<<current_sample<<"  ";
-            std::cout << "         Ruecklauf 5s\n";
+            printColor("Ruecklauf 5s", YELLOW);
             if(zeitgeber>=5) 
                 zeitgeber -=5;
             else
@@ -199,9 +210,17 @@ int main(int argc, char *argv[]) {
         if(restart) {
             current_sample = first_sampe_offset;
             mp3.seekAndReset(snd.getPCM(), current_sample);
-            std::cout<<"reset to "<<current_sample<<std::endl;
+            printColor("Reset to 0", YELLOW);
+            //std::cout<<"reset to "<<current_sample<<std::endl;
             zeitgeber = 0;
             restart = false;
+        }
+
+        int frames = done / (mp3.getChannels() * 2);
+
+        // play until to
+        if(current_sample>(to+12)*mp3.getRate()) {
+            running = false;
         }
 
         int err = mp3.read(buffer, &done);
@@ -212,16 +231,13 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        int frames = done / (mp3.getChannels() * 2);
-        //cout<<"\n done: "<<done<<"  frames: "<<frames<<" \n"<<flush;
-
+        // write to snd buffer x frames
         if(!snd.write(buffer, frames))
             break;
 
-        // Fortschritt in Minuten:Sekunden
+        // Fortschritt in Minuten:Sekunden, is very bugy!!!
         int total_sec = total_samples / mp3.getRate();
         int cur_sec = zeitgeber;
-        
 
         std::cout << "\rFortschritt: " << current_sample<<" "
              << (cur_sec / 60) << ":" << (cur_sec % 60 < 10 ? "0" : "") 
@@ -240,7 +256,7 @@ int main(int argc, char *argv[]) {
     inputThread.join();
     timerThread.join();
 
-    std::cout << std::endl << "Wiedergabe beendet." << std::endl;
+    printColor("Wiedergabe beendet.", YELLOW);
 
     snd.close(2);
     mp3.close();
