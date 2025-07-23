@@ -4,7 +4,7 @@ CXXFLAGS  = -Wall -O2 -pthread
 LDFLAGS   = -lmpg123 -lasound -ltag
 
 # Source files and target
-SRC       = helper.cpp MP3wrapper.cpp main.cpp
+SRC       = helper.cpp MP3wrapper.cpp SNDwrapper.cpp main.cpp
 OBJ       = $(SRC:.cpp=.o)
 TARGET    = mp3player
 

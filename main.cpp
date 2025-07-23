@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <cxxopts.hpp>
 #include "MP3wrapper.hpp"
+#include "SNDwrapper.hpp"
 #include "helper.hpp"
 
 int main(int argc, char *argv[]) {
@@ -73,19 +74,11 @@ int main(int argc, char *argv[]) {
               << "  number = " << number << "\n"
               << "  faster = " << faster << " x\n";
 
-    
-
     const char* filename = files[0].c_str();
 
     if(print_on){
         for(auto filename : files)
             printTAG(filename.c_str());
-    }
-
-    // mpg123 initialisieren
-    if (mpg123_init() != MPG123_OK) {
-        std::cerr << "Failed to initialize mpg123" << std::endl;
-        return 1;
     }
 
     MP3wrapper mp3;
@@ -95,35 +88,22 @@ int main(int argc, char *argv[]) {
         return 1;
     
     // ALSA initialisieren
-    snd_pcm_t *pcm_handle;
-    snd_pcm_hw_params_t *params;
-    if (snd_pcm_open(&pcm_handle, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
-        std::cerr << "Fehler beim Öffnen des ALSA-Geräts" << std::endl;
+    SNDwrapper snd;
+    if(!snd.init()) {
         mp3.close();
         return 1;
     }
-
-    snd_pcm_hw_params_malloc(&params);
-    snd_pcm_hw_params_any(pcm_handle, params);
-    snd_pcm_hw_params_set_access(pcm_handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
-
-    snd_pcm_format_t format;
+    
     if (mp3.getEcoding() == MPG123_ENC_SIGNED_16) {
-        format = SND_PCM_FORMAT_S16_LE;
+        snd.setFormat(SND_PCM_FORMAT_S16_LE);
     } else {
         std::cerr << "Nicht unterstuetztes Encoding" << std::endl;
         mp3.close();
-        snd_pcm_hw_params_free(params);
-        snd_pcm_close(pcm_handle);
+        snd.close(0);
         return 1;
     }
 
-    snd_pcm_hw_params_set_format(pcm_handle, params, format);
-    snd_pcm_hw_params_set_channels(pcm_handle, params, mp3.getChannels());
-    snd_pcm_hw_params_set_rate(pcm_handle, params, mp3.getRate(), 0);
-    snd_pcm_hw_params(pcm_handle, params);
-    snd_pcm_hw_params_free(params);
-    snd_pcm_prepare(pcm_handle);
+    snd.setParameters(mp3);
 
     unsigned char buffer[BUFFER_SIZE];
     size_t done = 0;
@@ -182,20 +162,20 @@ int main(int argc, char *argv[]) {
     while (running) {
         if (paused) {
             if (!alsa_paused) {
-                snd_pcm_pause(pcm_handle, 1);  // ALSA pausieren
+                snd.pause(1);
                 alsa_paused = true;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         } else if (alsa_paused) {
-            snd_pcm_pause(pcm_handle, 0);  // ALSA fortsetzen
+            snd.pause(0);
             alsa_paused = false;
         }
 
         if(forward_set) {
             off_t newpos = current_sample + mp3.getRate() * 5; // 5 Sekunden vor
             if (newpos > total_samples) newpos = total_samples;
-            mp3.seekAndReset( pcm_handle, newpos);
+            mp3.seekAndReset( snd.getPCM(), newpos);
             current_sample = newpos;
             std::cout << "\nVorlauf 5s\n";
             if(zeitgeber<(total_samples/mp3.getRate()))  zeitgeber += 5;
@@ -206,7 +186,7 @@ int main(int argc, char *argv[]) {
             std::cout<<std::endl<<"cur: "<<current_sample<<"  ";
             if (newpos < 0) newpos = first_sampe_offset;
             std::cout<<"new: "<<newpos;
-            mp3.seekAndReset(pcm_handle, newpos);
+            mp3.seekAndReset(snd.getPCM(), newpos);
             current_sample = newpos;
             std::cout<<"  cur: "<<current_sample<<"  ";
             std::cout << "         Ruecklauf 5s\n";
@@ -218,7 +198,7 @@ int main(int argc, char *argv[]) {
         }
         if(restart) {
             current_sample = first_sampe_offset;
-            mp3.seekAndReset(pcm_handle, current_sample);
+            mp3.seekAndReset(snd.getPCM(), current_sample);
             std::cout<<"reset to "<<current_sample<<std::endl;
             zeitgeber = 0;
             restart = false;
@@ -226,7 +206,7 @@ int main(int argc, char *argv[]) {
 
         int err = mp3.read(buffer, &done);
         if (err == MPG123_DONE || done == 0) {
-            if(is_playback_finished(pcm_handle))
+            if(snd.is_playback_finished())
                 break; // Ende der Datei
         } else if (err != MPG123_OK) {
             break;
@@ -234,13 +214,9 @@ int main(int argc, char *argv[]) {
 
         int frames = done / (mp3.getChannels() * 2);
         //cout<<"\n done: "<<done<<"  frames: "<<frames<<" \n"<<flush;
-        int err2 = snd_pcm_writei(pcm_handle, buffer, frames);
-        if (err2 == -EPIPE) {
-            snd_pcm_prepare(pcm_handle);
-        } else if (err2 < 0) {
-            std::cerr << "ALSA write error: " << snd_strerror(err2) << std::endl;
+
+        if(!snd.write(buffer, frames))
             break;
-        }
 
         // Fortschritt in Minuten:Sekunden
         int total_sec = total_samples / mp3.getRate();
@@ -258,8 +234,7 @@ int main(int argc, char *argv[]) {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
-    snd_pcm_drop(pcm_handle);
-    snd_pcm_prepare(pcm_handle);
+    snd.close(1);
 
     running = false;
     inputThread.join();
@@ -267,8 +242,7 @@ int main(int argc, char *argv[]) {
 
     std::cout << std::endl << "Wiedergabe beendet." << std::endl;
 
-    snd_pcm_drain(pcm_handle);
-    snd_pcm_close(pcm_handle);
+    snd.close(2);
     mp3.close();
 
     return 0;

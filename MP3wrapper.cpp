@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include <cstring>
 #include <cstdio>
-#include <termios.h>
 #include <fcntl.h>
 #include "MP3wrapper.hpp"
 
@@ -18,6 +17,12 @@ bool MP3wrapper::init() {
         mpg123_exit();
         return false;
     }
+    // mpg123 initialisieren
+    if (mpg123_init() != MPG123_OK) {
+        std::cerr << "Failed to initialize mpg123" << std::endl;
+        return false;
+    }
+
     return true;
 }
 

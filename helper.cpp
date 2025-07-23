@@ -45,20 +45,6 @@ void printTAG(const char *filename) {
     }
 }
 
-bool is_playback_finished(snd_pcm_t* pcm_handle) {
-    snd_pcm_sframes_t delay;
-    if (snd_pcm_delay(pcm_handle, &delay) < 0) {
-        std::cerr << "snd_pcm_delay fehlgeschlagen\n";
-        return false;
-    }
-    std::cout<<"  delay " << delay<<"  "<<std::flush;
-    if(delay<1024) {
-        std::cout<<" delayed end ....\n";
-        return true;
-    } else
-        return false;
-}
-
 // Hilfsfunktion zur Prüfung der Dateiendung
 bool has_valid_extension(const std::string& filename) {
     auto pos = filename.rfind('.');
